@@ -1,0 +1,185 @@
+```python 
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import inch
+import json
+import os
+from datetime import datetime
+from typing import List, Dict, Any
+
+# -----------------------------
+# PHASE 4: Log Export to PDF
+# -----------------------------
+# What this script does:
+# - Reads audit_log.json (from Phase 3)
+# - Turns all log entries into a table
+# - Saves the table as a PDF called logs_report.pdf
+# -----------------------------
+
+LOG_FILE = "audit_log.json"   # Input log file
+PDF_FILE = "logs_report.pdf"  # Output PDF file
+
+# Table configuration
+TABLE_HEADERS = ["Date", "Time", "User", "Action", "Outcome"]
+TABLE_FIELDS = ["date", "time", "user", "action", "outcome"]
+
+# PDF styling constants
+TITLE_TEXT = "Audit Log Report"
+PAGE_MARGINS = {
+    "leftMargin": 0.75 * inch,
+    "rightMargin": 0.75 * inch,
+    "topMargin": 1 * inch,
+    "bottomMargin": 1 * inch
+}
+
+
+def load_logs() -> List[Dict[str, Any]]:
+    """
+    Load logs from the audit_log.json file.
+
+    Returns:
+        List of log entries as dictionaries, or empty list if file doesn't exist.
+    """
+    if not os.path.exists(LOG_FILE):
+        print(f"Warning: Log file '{LOG_FILE}' not found. Please run Phase 3 first.")
+        return []
+
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            logs = json.load(f)
+
+        # Validate that logs is a list
+        if not isinstance(logs, list):
+            print(f"Warning: Expected a list of logs, got {type(logs).__name__}. Using empty list.")
+            return []
+
+        return logs
+
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in '{LOG_FILE}': {e}")
+        return []
+    except PermissionError:
+        print(f"Error: Permission denied reading '{LOG_FILE}'")
+        return []
+    except Exception as e:
+        print(f"Error: Unexpected error reading '{LOG_FILE}': {e}")
+        return []
+
+
+def create_pdf_elements(logs: List[Dict[str, Any]], styles: Dict[str, Any]) -> List:
+    """
+    Create the PDF elements including title and table.
+    """
+    elements = []
+
+    # Add title with timestamp
+    title_text = f"{TITLE_TEXT}<br/>Generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    title = Paragraph(title_text, styles["Title"])
+    elements.append(title)
+    elements.append(Spacer(1, 12))
+
+    # Add summary information
+    summary = Paragraph(f"Total log entries: {len(logs)}", styles["Normal"])
+    elements.append(summary)
+    elements.append(Spacer(1, 12))
+
+    # Create table data
+    data = [TABLE_HEADERS]
+
+    # Add log entries to the table
+    for entry in logs:
+        row = [entry.get(field, "N/A") for field in TABLE_FIELDS]
+        data.append(row)
+
+    # Create and style the table
+    table = create_styled_table(data)
+    elements.append(table)
+
+    return elements
+
+
+def create_styled_table(data: List[List[str]]) -> Table:
+    """
+    Create a styled table from the data.
+    """
+    # Column widths
+    col_widths = [1.2 * inch, 1 * inch, 1.2 * inch, 2 * inch, 1.5 * inch]
+
+    table = Table(data, repeatRows=1, colWidths=col_widths)
+
+    # Apply table styling
+    style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 12),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 10),
+        ("ALIGN", (0, 0), (-1, 0), "CENTER"),
+
+        ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 1), (-1, -1), 10),
+        ("ALIGN", (0, 1), (-1, -1), "LEFT"),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+
+        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ("LINEBELOW", (0, 0), (-1, 0), 2, colors.black),
+
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.beige, colors.lightgrey]),
+    ])
+
+    table.setStyle(style)
+    return table
+
+
+def export_logs_to_pdf() -> bool:
+    """
+    Main function to export logs to PDF.
+    """
+    logs = load_logs()
+    if not logs:
+        print("No logs to export. PDF generation cancelled.")
+        return False
+
+    try:
+        doc = SimpleDocTemplate(
+            PDF_FILE,
+            pagesize=letter,
+            **PAGE_MARGINS
+        )
+
+        styles = getSampleStyleSheet()
+        elements = create_pdf_elements(logs, styles)
+
+        doc.build(elements)
+
+        print(f"Log report saved as '{PDF_FILE}'")
+        print(f"Total entries: {len(logs)}")
+        print(f"File size: {os.path.getsize(PDF_FILE):,} bytes")
+
+        return True
+
+    except PermissionError:
+        print(f"Error: Permission denied writing to '{PDF_FILE}'")
+        return False
+    except Exception as e:
+        print(f"Error: Failed to generate PDF: {e}")
+        return False
+
+
+def main():
+    """Entry point of the script."""
+    print("Starting audit log PDF export...")
+    success = export_logs_to_pdf()
+
+    if success:
+        print("Export completed successfully!")
+    else:
+        print("Export failed. Please check the errors above.")
+        exit(1)
+
+
+if __name__ == "__main__":
+    main()
